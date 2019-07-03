@@ -14,11 +14,19 @@ type Optional<T> = (T | undefined);
 let CLIENT_ID: Optional<string> = undefined;
 let AUTH_TOKEN: Optional<string> = undefined;
 
-function configure(authToken: string, clientId: Optional<string> = undefined) {
-    if (clientId) {
-        CLIENT_ID = clientId;
+interface ConfigOptions {
+    clientId?: string
+    authToken?: string
+}
+
+function configure(opts: ConfigOptions) {
+    if (opts.clientId) {
+        CLIENT_ID = opts.clientId;
     }
-    AUTH_TOKEN = authToken;
+
+    if (opts.authToken) {
+        AUTH_TOKEN = opts.authToken;
+    }
 }
 
 function get<T>(opts: Options): Promise<Response<T>> {
