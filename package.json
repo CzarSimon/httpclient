@@ -1,5 +1,5 @@
 {
-  "name": "httpclient",
+  "name": "@czarsimon/httpclient",
   "version": "0.1.0",
   "description": "Http client with reties based on axios",
   "main": "lib/index.js",
