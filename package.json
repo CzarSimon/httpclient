@@ -1,11 +1,11 @@
 {
   "name": "@czarsimon/httpclient",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Http client with reties based on axios",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 0",
+    "test": "jest",
     "lint": "echo \"Error: no linting rules specified\" && exit 0",
     "format": "echo \"Error: no formating specified\" && exit 0",
     "build": "tsc",
@@ -26,10 +26,14 @@
   },
   "homepage": "https://github.com/CzarSimon/httpclient#readme",
   "devDependencies": {
+    "@types/jest": "^24.0.15",
+    "jest": "^24.8.0",
     "prettier": "^1.18.2",
+    "ts-jest": "^24.0.2",
     "tslint": "^5.18.0",
     "tslint-config-prettier": "^1.18.0",
-    "typescript": "^3.5.2"
+    "typescript": "^3.5.2",
+    "wait-for-expect": "^1.2.0"
   },
   "files": [
     "lib/**/*"
