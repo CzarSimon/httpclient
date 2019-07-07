@@ -1,4 +1,5 @@
 type CircutState = (0 | 1 | 2);
+type Optional<T> = (T | undefined);
 
 const OPEN: CircutState = 0;
 const HALF_OPEN: CircutState = 1;
@@ -126,17 +127,38 @@ export default class CircutBreaker {
 }
 
 export function parseBackendId(urlStr: string): string {
-    if (urlStr.startsWith("/")) {
-        return parseUrlRoute(urlStr);
-    };
-
-    const url = new URL(urlStr);
-    const port = (url.port) ? `:${url.port}` : "";
-    return url.hostname + port + parseUrlRoute(url.pathname);
+    const domain = parseDomain(urlStr);
+    return (domain || "") + parseUrlRoute(urlStr, domain)
 }
 
-function parseUrlRoute(path: string): string {
+function parseUrlRoute(url: string, domain: Optional<string>): string {
+    const path = parsePath(url, domain)
     return path.split("/").slice(0, 3).join("/");
+}
+
+function parsePath(url: string, domain: Optional<string>): string {
+    if (!domain) {
+        return url;
+    }
+
+    const urlSplit = url.split(domain);
+    return (urlSplit.length >= 2) ?
+        urlSplit[1] :
+        urlSplit[0];
+}
+
+const SCHEME_AND_DOMAIN_PATTERN = "^(?:https?:)?(?:\/\/)?([^\/\?]+)";
+
+function parseDomain(url: string): Optional<string> {
+    const matches = url.match(SCHEME_AND_DOMAIN_PATTERN);
+    if (!matches || matches.length < 0) {
+        return undefined;
+    }
+
+    const schemeAndDomain = matches[0].split("://");
+    return (schemeAndDomain.length >= 2) ?
+        schemeAndDomain[1] :
+        schemeAndDomain[0]
 }
 
 function newBackend(id: string): BackendHealth {
