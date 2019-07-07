@@ -13,7 +13,7 @@ export interface Options {
 
 export interface Response<T = any> {
     body?: T
-    error?: Error
+    error?: any
     status: number
 };
 

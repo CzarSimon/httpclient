@@ -1,6 +1,7 @@
 import uuid from 'uuid/v4';
 import axios, { AxiosError } from 'axios';
 import { Options, Response, Error, Headers } from "./types";
+import CircutBreaker, { CircutBreakerOptions } from "./circutBreaker";
 import {
     TIMEOUT_MS,
     RETRY_DELAY_MS,
@@ -13,10 +14,12 @@ type Optional<T> = (T | undefined);
 
 let CLIENT_ID: Optional<string> = undefined;
 let AUTH_TOKEN: Optional<string> = undefined;
+let circutBreaker = new CircutBreaker({ active: true });
 
 interface ConfigOptions {
     clientId?: string
     authToken?: string
+    circutBreakerConfig?: CircutBreakerOptions
 }
 
 function configure(opts: ConfigOptions) {
@@ -26,6 +29,10 @@ function configure(opts: ConfigOptions) {
 
     if (opts.authToken) {
         AUTH_TOKEN = opts.authToken;
+    }
+
+    if (opts.circutBreakerConfig) {
+        circutBreaker = new CircutBreaker(opts.circutBreakerConfig);
     }
 }
 
@@ -46,6 +53,10 @@ function deleteRequest<T>(opts: Options): Promise<Response<T>> {
 };
 
 async function request<T>(opts: Options): Promise<Response<T>> {
+    if (circutBreaker.isOpen(opts.url)) {
+        return createCircutOpenResponse(opts);
+    };
+
     const { url, method = "get", body, headers, timeout = TIMEOUT_MS } = opts;
     const requestHeaders = (headers) ? headers : createHeaders(opts);
     try {
@@ -56,6 +67,7 @@ async function request<T>(opts: Options): Promise<Response<T>> {
             data: body,
             headers: requestHeaders
         });
+        circutBreaker.record(url, status);
         return { body: data, error: undefined, status }
     } catch (error) {
         return handleRequestFailure<T>(opts, requestHeaders, error);
@@ -63,6 +75,9 @@ async function request<T>(opts: Options): Promise<Response<T>> {
 }
 
 function handleRequestFailure<T>(opts: Options, headers: Headers, error: AxiosError<Error>): Promise<Response<T>> {
+    const errorStatus = (error.request) ? error.response!.status : SERVICE_UNAVAILABLE;
+    circutBreaker.record(opts.url, errorStatus);
+
     if (error.response) {
         return handleFailureResponse<T>(opts, headers, error);
     } else if (error.request) {
@@ -154,6 +169,20 @@ function createHeaders(opts: Options): Headers {
     }
 
     return baseHeaders;
+};
+
+function createCircutOpenResponse(opts: Options): Promise<Response> {
+    return Promise.resolve({
+        body: undefined,
+        status: SERVICE_UNAVAILABLE,
+        error: {
+            errorId: "CIRCUT_OPEN_ERROR",
+            status: SERVICE_UNAVAILABLE,
+            message: `CircutBreaker open for url=${opts.url}`,
+            path: opts.url,
+            requestId: ""
+        }
+    });
 };
 
 function sleep(milliseconds: number): Promise<void> {
