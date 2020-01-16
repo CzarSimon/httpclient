@@ -1,201 +1,182 @@
-import uuid from 'uuid/v4';
-import axios, { AxiosError } from 'axios';
-import { Options, Response, Error, Headers } from "./types";
-import CircutBreaker, { CircutBreakerOptions } from "./circutBreaker";
 import {
-    TIMEOUT_MS,
-    RETRY_DELAY_MS,
-    SERVICE_UNAVAILABLE,
-    IDEMPOTENT_METHODS,
-    RETRY_STATUSES
+  METHODS,
+  TIMEOUT_MS,
+  RETRY_DELAY_MS,
+  SERVICE_UNAVAILABLE,
+  IDEMPOTENT_METHODS,
+  RETRY_STATUSES,
+  DEFAULT_METHOD,
+  CIRCUT_OPEN
 } from './constants';
-
-type Optional<T> = (T | undefined);
-
-let CLIENT_ID: Optional<string> = undefined;
-let AUTH_TOKEN: Optional<string> = undefined;
-let circutBreaker = new CircutBreaker({ active: true });
+import CircutBreaker, { Options as CircutBreakerOptions } from "@czarsimon/circutbreaker";
+import { Logger } from "@czarsimon/remotelogger";
+import { Handlers, ConsoleHandler } from "@czarsimon/remotelogger/lib/handler";
+import { DEBUG } from "@czarsimon/remotelogger/lib/util/level";
+import { Options, Response, Headers, Optional, ResponseMetadata, Error } from "./types";
+import { Transport } from './transport/base';
+import { Fetch } from './transport/fetch';
 
 interface ConfigOptions {
-    clientId?: string
-    authToken?: string
-    circutBreakerConfig?: CircutBreakerOptions
+  baseHeaders?: Headers
+  circutBreakerOptions?: CircutBreakerOptions
+  logHandlers?: Handlers
+  transport?: Transport
 }
 
-function configure(opts: ConfigOptions) {
-    if (opts.clientId) {
-        CLIENT_ID = opts.clientId;
-    }
+export class HttpClient {
+  private baseHeaders: Headers;
+  private circutBreaker: CircutBreaker;
+  private log: Logger;
+  private transport: Transport;
 
-    if (opts.authToken) {
-        AUTH_TOKEN = opts.authToken;
-    }
+  constructor(opts: ConfigOptions) {
+    const { baseHeaders, circutBreakerOptions, logHandlers, transport } = opts;
 
-    if (opts.circutBreakerConfig) {
-        circutBreaker = new CircutBreaker(opts.circutBreakerConfig);
-    }
-}
+    this.baseHeaders = baseHeaders || {};
+    this.circutBreaker = new CircutBreaker(circutBreakerOptions || { active: true });
 
-function get<T>(opts: Options): Promise<Response<T>> {
-    return request<T>({ ...opts, method: "get" });
-};
+    this.log = new Logger({
+      handlers: logHandlers || {},
+      name: "httpclient",
+    });
 
-function post<T>(opts: Options): Promise<Response<T>> {
-    return request<T>({ ...opts, method: "post" });
-};
+    this.transport = transport || new Fetch();
+  };
 
-function put<T>(opts: Options): Promise<Response<T>> {
-    return request<T>({ ...opts, method: "put" });
-};
+  public async get<T, E>(opts: Options): Promise<Response<T, E>> {
+    return this.request({ ...opts, method: METHODS.GET });
+  };
 
-function deleteRequest<T>(opts: Options): Promise<Response<T>> {
-    return request<T>({ ...opts, method: "delete" });
-};
+  public async put<T, E>(opts: Options): Promise<Response<T, E>> {
+    return this.request({ ...opts, method: METHODS.PUT });
+  };
 
-async function request<T>(opts: Options): Promise<Response<T>> {
-    if (circutBreaker.isOpen(opts.url)) {
-        return createCircutOpenResponse(opts);
+  public async post<T, E>(opts: Options): Promise<Response<T, E>> {
+    return this.request({ ...opts, method: METHODS.POST });
+  };
+
+  public async delete<T, E>(opts: Options): Promise<Response<T, E>> {
+    return this.request({ ...opts, method: METHODS.DELETE });
+  };
+
+  public async request<T, E>(opts: Options): Promise<Response<T, E>> {
+    const { url, method = METHODS.GET, body } = opts;
+
+    if (this.circutBreaker.isOpen(url)) {
+      return createCircutOpenResponse(opts);
     };
 
-    const { url, method = "get", body, headers, timeout = TIMEOUT_MS } = opts;
-    const requestHeaders = (headers) ? headers : createHeaders(opts);
+    const headers = this.createHeaders(opts);
     try {
-        const { data, status } = await axios({
-            method,
-            url,
-            timeout,
-            data: body,
-            headers: requestHeaders
-        });
-        circutBreaker.record(url, status);
-        return { body: data, error: undefined, status }
+      const res = await this.transport.request<T, E>({
+        body,
+        headers,
+        method,
+        url,
+      });
+
+      const { status } = res.metadata;
+      if (status >= 400 || res.error) {
+        return this.handleRequestFailure<T, E>({ ...opts, headers }, res.metadata, res.error);
+      };
+
+      this.recordRequest(res.metadata);
+      return res;
     } catch (error) {
-        return handleRequestFailure<T>(opts, requestHeaders, error);
+      this.circutBreaker.record(url, SERVICE_UNAVAILABLE);
+      throw error;
     }
-}
+  };
 
-function handleRequestFailure<T>(opts: Options, headers: Headers, error: AxiosError<Error>): Promise<Response<T>> {
-    const errorStatus = (error.request) ? error.response!.status : SERVICE_UNAVAILABLE;
-    circutBreaker.record(opts.url, errorStatus);
+  private handleRequestFailure<T, E>(opts: Options, metadata: ResponseMetadata, error: Optional<Error<E>>): Promise<Response<T, E>> {
+    const { method, url } = opts;
+    const { requestId, status } = metadata;
+    this.circutBreaker.record(url, status);
+    this.log.error(`${method} ${url} - status=[${status}], error=[${error}], requestId=[${requestId}]`)
+    return this.retryRequest<T, E>(opts, metadata, error);
+  };
 
-    if (error.response) {
-        return handleFailureResponse<T>(opts, headers, error);
-    } else if (error.request) {
-        return retryRequest(opts, headers, SERVICE_UNAVAILABLE);
-    }
-
-    return createErrorResponse(error, opts);
-};
-
-function handleFailureResponse<T>(opts: Options, headers: Headers, error: AxiosError<Error>): Promise<Response<T>> {
-    const { status } = error.response!;
-    if (RETRY_STATUSES.has(status)) {
-        return retryRequest<T>(opts, headers, status);
-    }
-
-    return createErrorResponse(error, opts);
-};
-
-async function retryRequest<T>(opts: Options, headers: Headers, status: number): Promise<Response<T>> {
+  private async retryRequest<T, E>(opts: Options, metadata: ResponseMetadata, error: Optional<Error<E>>): Promise<Response<T, E>> {
     const { timeout = TIMEOUT_MS } = opts;
     if (shouldRetry(opts)) {
-        return maxRetriesExceeded(opts, headers);
+      return createErrorResponse<T, E>(metadata, error);
     }
 
-    const delay = RETRY_DELAY_MS * ((RETRY_STATUSES.has(status)) ? 2 : 1);
+    const delay = RETRY_DELAY_MS * ((RETRY_STATUSES.has(metadata.status)) ? 2 : 1);
     await sleep(delay);
-    return request({ ...opts, headers, timeout: (timeout + delay), retryOnFailure: false });
+    return this.request<T, E>({ ...opts, timeout: (timeout + delay), retryOnFailure: false });
+  };
+
+  private createHeaders(opts: Options): Headers {
+    const headers = opts.headers || {};
+    Object.keys(this.baseHeaders).forEach(headerName => {
+      if (!headers[headerName]) {
+        headers[headerName] = this.baseHeaders[headerName];
+      }
+    });
+
+    return headers;
+  };
+
+  private recordRequest(metadata: ResponseMetadata) {
+    const { latency, method, requestId, status, url } = metadata;
+    this.circutBreaker.record(url, status);
+
+    const log = (status < 400) ? this.log.debug : this.log.warn;
+    log(`${method} ${url} - status=[${status}], latency=[${latency} ms], requestId=[${requestId}]`)
+  };
 };
 
-function formatAxiosError(error: AxiosError<Error>, opts: Options): Error {
-    if (error.response) {
-        return error.response.data
-    }
-
-    return {
-        status: SERVICE_UNAVAILABLE,
-        message: `No response: method=${opts.method} url=${opts.url} axiosErrorCode=${error.code}`,
-        path: opts.url,
-        requestId: error.config.headers["X-Request-ID"]
-    }
-}
-
-function maxRetriesExceeded(opts: Options, headers: Headers): Promise<Response> {
-    const err = {
-        status: SERVICE_UNAVAILABLE,
-        message: `Max retries reached. ${opts.method} ${opts.method}`,
-        path: opts.url,
-        requestId: headers["X-Request-ID"]
-    };
-
-    return Promise.resolve({
-        body: undefined,
-        status: err.status,
-        error: err
-    });
-}
-
-function createErrorResponse(error: AxiosError<Error>, opts: Options): Promise<Response> {
-    const err = formatAxiosError(error, opts);
-    return Promise.resolve({
-        body: undefined,
-        status: err.status,
-        error: err
-    });
-}
+const defaultClient = new HttpClient({
+  circutBreakerOptions: {
+    active: true,
+  },
+  logHandlers: {
+    console: new ConsoleHandler(DEBUG),
+  }
+});
 
 function shouldRetry(opts: Options): boolean {
-    const { method, retryOnFailure = true } = opts;
-    if (!retryOnFailure) {
-        return false
-    }
-    return (method !== undefined && IDEMPOTENT_METHODS.has(method));
+  const { method, retryOnFailure = true } = opts;
+  if (!retryOnFailure) {
+    return false
+  }
+  return (method !== undefined && IDEMPOTENT_METHODS.has(method));
 }
 
-function createHeaders(opts: Options): Headers {
-    const { useAuth = true } = opts;
-    const baseHeaders: Headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Accept-Language": "sv",
-        "X-Request-ID": uuid()
-    };
+function createCircutOpenResponse<T, E>(opts: Options): Promise<Response<T, E>> {
+  const { method = DEFAULT_METHOD, url } = opts;
 
-    if (CLIENT_ID) {
-        baseHeaders["X-Client-ID"] = CLIENT_ID;
+  return Promise.resolve({
+    error: {
+      type: CIRCUT_OPEN,
+    },
+    metadata: {
+      latency: 0,
+      method,
+      status: SERVICE_UNAVAILABLE,
+      url,
     }
-    if (AUTH_TOKEN && useAuth) {
-        baseHeaders["Authorization"] = `Bearer ${AUTH_TOKEN}`;
-    }
-
-    return baseHeaders;
+  });
 };
 
-function createCircutOpenResponse(opts: Options): Promise<Response> {
-    return Promise.resolve({
-        body: undefined,
-        status: SERVICE_UNAVAILABLE,
-        error: {
-            errorId: "CIRCUT_OPEN_ERROR",
-            status: SERVICE_UNAVAILABLE,
-            message: `CircutBreaker open for url=${opts.url}`,
-            path: opts.url,
-            requestId: ""
-        }
-    });
+function createErrorResponse<T, E>(metadata: ResponseMetadata, error: Optional<Error<E>>): Promise<Response<T, E>> {
+  return Promise.resolve({
+    error,
+    metadata,
+  })
 };
 
 function sleep(milliseconds: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, milliseconds));
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
 };
 
 const httpclient = {
-    configure,
-    request,
-    get,
-    post,
-    put,
-    delete: deleteRequest
+  request: defaultClient.request,
+  get: defaultClient.get,
+  put: defaultClient.put,
+  post: defaultClient.post,
+  delete: defaultClient.delete,
 };
 
 export default httpclient;

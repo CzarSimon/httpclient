@@ -1,30 +1,53 @@
-import { Method } from 'axios';
+export type Optional<T> = (T | undefined);
+
+export type Method = (
+  "GET" |
+  "PUT" |
+  "PATCH" |
+  "POST" |
+  "DELETE" |
+  "OPTIONS" |
+  "HEAD"
+);
 
 export interface Options {
-    url: string
-    useAuth: boolean
-    method?: Method
-    body?: any
-    headers?: Headers
-    timeout?: number
-    clientId?: string
-    retryOnFailure?: boolean
+  url: string
+  method?: Method
+  body?: any
+  headers?: Headers
+  timeout?: number
+  retryOnFailure?: boolean
 };
 
-export interface Response<T = any> {
-    body?: T
-    error?: any
-    status: number
-};
-
-export interface Error {
-    errorId?: string
-    status: number
-    message: string
-    path: string
-    requestId: string
+export interface Request {
+  url: string
+  method: Method
+  body?: any
+  headers: Headers
 };
 
 export interface Headers {
-    [name: string]: string
-}
+  [name: string]: string
+};
+
+export interface Response<T, E> {
+  body?: T
+  error?: Error<E>
+  metadata: ResponseMetadata
+};
+
+export interface ResponseMetadata {
+  latency: number
+  method: Method
+  requestId?: string
+  status: number
+  url: string
+};
+
+export interface Error<E> {
+  type: string
+  body?: E
+};
+
+
+
