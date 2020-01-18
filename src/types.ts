@@ -32,7 +32,7 @@ export interface Headers {
 
 export interface Response<T, E> {
   body?: T
-  error?: Error<E>
+  error?: HTTPError<E>
   metadata: ResponseMetadata
 };
 
@@ -44,7 +44,7 @@ export interface ResponseMetadata {
   url: string
 };
 
-export interface Error<E> {
+export interface HTTPError<E> {
   type: string
   body?: E
 };

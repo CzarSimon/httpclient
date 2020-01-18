@@ -41,7 +41,7 @@
   ],
   "dependencies": {
     "@czarsimon/circutbreaker": "^1.0.0",
-    "@czarsimon/remotelogger": "^0.8.0",
+    "@czarsimon/remotelogger": "^0.9.0",
     "uuid": "^3.3.3"
   }
 }
