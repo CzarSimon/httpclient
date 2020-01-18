@@ -5,7 +5,7 @@
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "lint": "echo \"Error: no linting rules specified\" && exit 0",
     "format": "echo \"Error: no formating specified\" && exit 0",
     "build": "tsc",
