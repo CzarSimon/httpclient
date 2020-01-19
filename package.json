@@ -5,9 +5,9 @@
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
-    "test": "jest --passWithNoTests",
-    "lint": "echo \"Error: no linting rules specified\" && exit 0",
-    "format": "echo \"Error: no formating specified\" && exit 0",
+    "test": "jest --config jestconfig.json",
+    "lint": "tslint -p tsconfig.json",
+    "format": "prettier --write \"src/**/*.ts\" \"src/**/*.js\"",
     "build": "tsc",
     "prepare": "npm run build",
     "prepublishOnly": "npm test && npm run lint",
@@ -29,12 +29,12 @@
     "@types/jest": "^24.9.0",
     "@types/uuid": "^3.4.6",
     "jest": "^24.9.0",
-    "prettier": "^1.18.2",
-    "ts-jest": "^24.0.2",
-    "tslint": "^5.18.0",
+    "prettier": "^1.19.1",
+    "ts-jest": "^24.3.0",
+    "tslint": "^5.20.1",
     "tslint-config-prettier": "^1.18.0",
     "typescript": "^3.7.4",
-    "wait-for-expect": "^1.2.0"
+    "wait-for-expect": "^3.0.1"
   },
   "files": [
     "lib/**/*"
@@ -42,6 +42,7 @@
   "dependencies": {
     "@czarsimon/circutbreaker": "^1.0.0",
     "@czarsimon/remotelogger": "^0.9.0",
+    "cross-fetch": "^3.0.4",
     "uuid": "^3.3.3"
   }
 }

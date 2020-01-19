@@ -1,23 +1,30 @@
-import { Transport } from "./base";
-import { Headers, Request, Response, ResponseMetadata } from "../types";
-import { REQUEST_ID_HEADER, CONTENT_TYPE_HEADER, REQUEST_ERROR } from "../constants";
+import fetch from 'cross-fetch';
 import uuid from 'uuid/v4';
+import { CONTENT_TYPE_HEADER, CONTENT_TYPES, REQUEST_ERROR, REQUEST_ID_HEADER } from '../constants';
+import { Headers, Optional, Request, Response as HTTPResponse, ResponseMetadata } from '../types';
+import { Transport } from './base';
 
 export class Fetch extends Transport {
-  public async request<T, E>(req: Request): Promise<Response<T, E>> {
-    const { body, method, url } = req;
+  public async request<T, E>(req: Request): Promise<HTTPResponse<T, E>> {
+    const { body, method, timeout, url } = req;
 
     const headers = createHeaders(req);
-    const startTime = (new Date()).getTime();
+
+    const controller = new AbortController();
+    if (timeout) {
+      setTimeout(() => {
+        controller.abort();
+      }, timeout);
+    }
 
     const res = await fetch(url, {
-      body: (body) ? JSON.stringify(body) : undefined,
+      body: body ? JSON.stringify(body) : undefined,
       headers,
       method,
+      signal: controller.signal,
     });
 
     const metadata: ResponseMetadata = {
-      latency: (new Date()).getTime() - startTime,
       method,
       requestId: headers[REQUEST_ID_HEADER],
       status: res.status,
@@ -25,28 +32,44 @@ export class Fetch extends Transport {
     };
 
     if (res.ok) {
-      const responseBody: T = await res.json();
       return {
-        body: responseBody,
+        body: await parseBody<T>(res),
         metadata,
-      }
+      };
     } else {
-      const err: E = await res.json();
       return {
         error: {
+          body: await parseBody<E>(res),
           type: REQUEST_ERROR,
-          body: err,
         },
         metadata,
-      }
-    };
+      };
+    }
   }
-};
+}
+
+async function parseBody<T>(res: Response): Promise<Optional<T>> {
+  const contentType = res.headers.get(CONTENT_TYPE_HEADER);
+  if (!contentType) {
+    return;
+  }
+
+  if (contentType.startsWith(CONTENT_TYPES.JSON)) {
+    return res.json();
+  }
+
+  if (contentType.startsWith(CONTENT_TYPES.TEXT) || contentType.startsWith(CONTENT_TYPES.HTML)) {
+    const body: any = await res.text();
+    return body;
+  }
+
+  return res.json();
+}
 
 function createHeaders(req: Request): Headers {
   const headers: Headers = req.headers || {};
   if (req.body && !headers[CONTENT_TYPE_HEADER]) {
-    headers[CONTENT_TYPE_HEADER] = "application/json"
+    headers[CONTENT_TYPE_HEADER] = CONTENT_TYPES.JSON;
   }
 
   if (!headers[REQUEST_ID_HEADER]) {
@@ -54,4 +77,4 @@ function createHeaders(req: Request): Headers {
   }
 
   return headers;
-};
+}

@@ -1,5 +1,5 @@
-import { Response, Request } from "../types";
+import { Request, Response } from '../types';
 
 export abstract class Transport {
-  public async abstract request<T, E>(req: Request): Promise<Response<T, E>>;
+  public abstract async request<T, E>(req: Request): Promise<Response<T, E>>;
 }
