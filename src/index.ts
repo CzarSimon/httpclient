@@ -3,7 +3,7 @@ import { HttpClient } from './client';
 import { Fetch } from './transport';
 
 export { HttpClient } from './client';
-export { Fetch, Transport } from './transport';
+export { Fetch, MockTransport, Transport } from './transport';
 export { CIRCUT_OPEN, REQUEST_ERROR } from './constants';
 export { Headers, HTTPError, Method, Request, Response, ResponseMetadata } from './types';
 

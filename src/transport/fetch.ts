@@ -7,7 +7,6 @@ import { Transport } from './base';
 export class Fetch extends Transport {
   public async request<T, E>(req: Request): Promise<HTTPResponse<T, E>> {
     const { body, method, timeout, url } = req;
-
     const headers = createHeaders(req);
 
     const controller = new AbortController();

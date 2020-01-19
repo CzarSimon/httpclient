@@ -13,6 +13,7 @@ import {
 import { Transport } from './transport/base';
 import { Fetch } from './transport/fetch';
 import { Headers, HTTPError, Optional, Options, Response, ResponseMetadata } from './types';
+import { sleep, Timer } from './util';
 
 interface ConfigOptions {
   baseHeaders?: Headers;
@@ -41,6 +42,14 @@ export class HttpClient {
     this.transport = transport || new Fetch();
   }
 
+  public setHeaders(headers: Headers) {
+    this.baseHeaders = headers;
+  }
+
+  public getHeaders(): Headers {
+    return this.baseHeaders;
+  }
+
   public async get<T, E>(opts: Options): Promise<Response<T, E>> {
     return this.request({ ...opts, method: METHODS.GET });
   }
@@ -58,7 +67,7 @@ export class HttpClient {
   }
 
   public async request<T, E>(opts: Options): Promise<Response<T, E>> {
-    const { url, method = METHODS.GET, body } = opts;
+    const { url, method = METHODS.GET, body, timeout } = opts;
 
     if (this.circutBreaker.isOpen(url)) {
       return createCircutOpenResponse(opts);
@@ -66,14 +75,15 @@ export class HttpClient {
 
     const headers = this.createHeaders(opts);
     try {
-      const startTime = new Date().getTime();
+      const timer = new Timer();
       const res = await this.transport.request<T, E>({
         body,
         headers,
         method,
+        timeout,
         url,
       });
-      res.metadata.latency = new Date().getTime() - startTime;
+      res.metadata.latency = timer.stop();
 
       const { status } = res.metadata;
       if (status >= 400 || res.error) {
@@ -83,6 +93,7 @@ export class HttpClient {
       this.recordRequest(res.metadata);
       return res;
     } catch (error) {
+      this.log.error(`${method} ${url} failed. error=[${JSON.stringify(error)}]`);
       this.circutBreaker.record(url, SERVICE_UNAVAILABLE);
       throw error;
     }
@@ -96,7 +107,9 @@ export class HttpClient {
     const { method, url } = opts;
     const { requestId, status } = metadata;
     this.circutBreaker.record(url, status);
-    this.log.error(`${method} ${url} - status=[${status}], error=[${error}], requestId=[${requestId}]`);
+
+    const errorMsg = error ? `error=[${error.type}: ${error.body}], ` : '';
+    this.log.error(`${method} ${url} - status=[${status}], ${errorMsg}requestId=[${requestId}]`);
     return this.retryRequest<T, E>(opts, metadata, error);
   }
 
@@ -130,8 +143,12 @@ export class HttpClient {
     const { latency, method, requestId, status, url } = metadata;
     this.circutBreaker.record(url, status);
 
-    const log = status < 400 ? this.log.debug : this.log.warn;
-    log(`${method} ${url} - status=[${status}], latency=[${latency} ms], requestId=[${requestId}]`);
+    const message = `${method} ${url} - status=[${status}], latency=[${latency} ms], requestId=[${requestId}]`;
+    if (status < 400) {
+      this.log.debug(message);
+    } else {
+      this.log.warn(message);
+    }
   }
 }
 
@@ -163,8 +180,4 @@ function createErrorResponse<T, E>(metadata: ResponseMetadata, error: Optional<H
     error,
     metadata,
   });
-}
-
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
