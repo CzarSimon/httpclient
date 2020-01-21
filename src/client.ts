@@ -1,5 +1,5 @@
 import CircutBreaker, { Options as CircutBreakerOptions } from '@czarsimon/circutbreaker';
-import { Handlers, Logger } from '@czarsimon/remotelogger';
+import { ConsoleHandler, Handlers, level, Logger } from '@czarsimon/remotelogger';
 import {
   CIRCUT_OPEN,
   DEFAULT_METHOD,
@@ -14,6 +14,12 @@ import { Transport } from './transport/base';
 import { Fetch } from './transport/fetch';
 import { Headers, HTTPError, Optional, Options, Response, ResponseMetadata } from './types';
 import { sleep, Timer } from './util';
+
+const log = new Logger({
+  handlers: {
+    console: new ConsoleHandler(level.DEBUG)
+  }, name: "debugger"
+});
 
 interface ConfigOptions {
   baseHeaders?: Headers;
@@ -87,6 +93,7 @@ export class HttpClient {
 
       const { status } = res.metadata;
       if (status >= 400 || res.error) {
+        log.debug(`an error occured status=${status} error=[${res.error}]`);
         return this.handleRequestFailure<T, E>({ ...opts, headers }, res.metadata, res.error);
       }
 
@@ -119,13 +126,19 @@ export class HttpClient {
     error: Optional<HTTPError<E>>,
   ): Promise<Response<T, E>> {
     const { timeout = TIMEOUT_MS } = opts;
-    if (!shouldRetry(opts)) {
+    if (!shouldRetry(opts, metadata)) {
+      log.debug("should not retry, returning error");
       return createErrorResponse<T, E>(metadata, error);
     }
 
-    const delay = RETRY_DELAY_MS * (RETRY_STATUSES.has(metadata.status) ? 2 : 1);
-    await sleep(delay);
-    return this.request<T, E>({ ...opts, timeout: timeout + delay, retryOnFailure: false });
+    log.debug("should retry, sleeping");
+    await sleep(RETRY_DELAY_MS);
+    log.debug("retrying request");
+    return this.request<T, E>({
+      ...opts,
+      retryOnFailure: false,
+      timeout: timeout + RETRY_DELAY_MS,
+    });
   }
 
   private createHeaders(opts: Options): Headers {
@@ -152,12 +165,20 @@ export class HttpClient {
   }
 }
 
-function shouldRetry(opts: Options): boolean {
+function shouldRetry(opts: Options, metadata: ResponseMetadata): boolean {
+  log.debug(`opts.retryOnFailure ${opts.retryOnFailure}`);
   const { method, retryOnFailure = true } = opts;
-  if (!retryOnFailure) {
-    return false;
-  }
-  return method !== undefined && IDEMPOTENT_METHODS.has(method);
+  log.debug(`used.retryOnFailure ${retryOnFailure}`);
+
+  const shouldRetryRequest: boolean = (
+    retryOnFailure &&
+    method !== undefined &&
+    IDEMPOTENT_METHODS.has(method) &&
+    RETRY_STATUSES.has(metadata.status)
+  );
+
+  log.debug(`shouldRetry ${shouldRetryRequest}`);
+  return shouldRetryRequest;
 }
 
 function createCircutOpenResponse<T, E>(opts: Options): Promise<Response<T, E>> {

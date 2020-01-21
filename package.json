@@ -1,6 +1,6 @@
 {
   "name": "@czarsimon/httpclient",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Http client with reties based on axios",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
