@@ -1,7 +1,7 @@
 import { ConsoleHandler, level } from '@czarsimon/remotelogger';
 import uuid from 'uuid/v4';
 import { HttpClient, MockTransport } from '.';
-import { CIRCUT_OPEN, METHODS, REQUEST_ERROR, SERVICE_UNAVAILABLE } from './constants';
+import { CIRCUT_OPEN, METHODS, REQUEST_ERROR, SERVICE_UNAVAILABLE, RETRY_DELAY_MS } from './constants';
 import { Timer } from './util';
 
 interface Author {
@@ -124,4 +124,100 @@ test('HttpClient circut breaker shold kick in on failed requests', async () => {
   expect(res.error?.type).toBe(CIRCUT_OPEN);
   expect(latency).toBeLessThan(2000);
   expect(res.metadata.status).toBe(SERVICE_UNAVAILABLE);
+});
+
+test('HttpClient retry should not be done on 400 errors', async () => {
+  const delay = 100;
+  const transport = new MockTransport(
+    {
+      '/authors/1': {
+        error: {
+          body: "bad request",
+          type: REQUEST_ERROR,
+        },
+        metadata: {
+          method: METHODS.GET,
+          requestId: uuid(),
+          status: 400,
+          url: '/authors/1',
+        },
+      },
+    },
+    delay,
+  );
+
+  const client = new HttpClient({ transport });
+  const timer = new Timer();
+  const res = await client.get<Author, string>({ url: '/authors/1', timeout: 2000 });
+  const latency = timer.stop();
+
+  expect(res.body).toBeUndefined();
+  expect(res.error).toBeDefined();
+  expect(latency).toBeGreaterThanOrEqual(delay);
+  expect(latency).toBeLessThan(delay * 2);
+  expect(res.metadata.status).toBe(400);
+});
+
+test('HttpClient retry should be done on 502 errors with idempotent methods', async () => {
+  const delay = 100;
+  const transport = new MockTransport(
+    {
+      '/authors/1': {
+        error: {
+          body: "bad gateway",
+          type: REQUEST_ERROR,
+        },
+        metadata: {
+          method: METHODS.GET,
+          requestId: uuid(),
+          status: 502,
+          url: '/authors/1',
+        },
+      },
+    },
+    delay,
+  );
+
+  const client = new HttpClient({ transport });
+  const timer = new Timer();
+  const res = await client.get<Author, string>({ url: '/authors/1', timeout: 2000 });
+  const latency = timer.stop();
+
+  expect(res.body).toBeUndefined();
+  expect(res.error).toBeDefined();
+  expect(latency).toBeGreaterThanOrEqual(delay * 2);
+  expect(latency).toBeLessThan(delay * 3 + RETRY_DELAY_MS);
+  expect(res.metadata.status).toBe(502);
+});
+
+test('HttpClient retry should not be done on 502 errors with non idempotent methods', async () => {
+  const delay = 100;
+  const transport = new MockTransport(
+    {
+      '/authors/1': {
+        error: {
+          body: "bad gateway",
+          type: REQUEST_ERROR,
+        },
+        metadata: {
+          method: METHODS.POST,
+          requestId: uuid(),
+          status: 502,
+          url: '/authors/1',
+        },
+      },
+    },
+    delay,
+  );
+
+  const client = new HttpClient({ transport });
+  const timer = new Timer();
+  const res = await client.post<Author, string>({ url: '/authors/1', timeout: 2000 });
+  const latency = timer.stop();
+
+  expect(res.body).toBeUndefined();
+  expect(res.error).toBeDefined();
+  expect(latency).toBeGreaterThanOrEqual(delay);
+  expect(latency).toBeLessThan(delay * 2);
+  expect(res.metadata.status).toBe(502);
 });
