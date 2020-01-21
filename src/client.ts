@@ -1,5 +1,5 @@
 import CircutBreaker, { Options as CircutBreakerOptions } from '@czarsimon/circutbreaker';
-import { ConsoleHandler, Handlers, level, Logger } from '@czarsimon/remotelogger';
+import { Handlers, Logger } from '@czarsimon/remotelogger';
 import {
   CIRCUT_OPEN,
   DEFAULT_METHOD,
@@ -14,12 +14,6 @@ import { Transport } from './transport/base';
 import { Fetch } from './transport/fetch';
 import { Headers, HTTPError, Optional, Options, Response, ResponseMetadata } from './types';
 import { sleep, Timer } from './util';
-
-const log = new Logger({
-  handlers: {
-    console: new ConsoleHandler(level.DEBUG)
-  }, name: "debugger"
-});
 
 interface ConfigOptions {
   baseHeaders?: Headers;
@@ -93,7 +87,6 @@ export class HttpClient {
 
       const { status } = res.metadata;
       if (status >= 400 || res.error) {
-        log.debug(`an error occured status=${status} error=[${res.error}]`);
         return this.handleRequestFailure<T, E>({ ...opts, headers }, res.metadata, res.error);
       }
 
@@ -127,13 +120,10 @@ export class HttpClient {
   ): Promise<Response<T, E>> {
     const { timeout = TIMEOUT_MS } = opts;
     if (!shouldRetry(opts, metadata)) {
-      log.debug("should not retry, returning error");
       return createErrorResponse<T, E>(metadata, error);
     }
 
-    log.debug("should retry, sleeping");
     await sleep(RETRY_DELAY_MS);
-    log.debug("retrying request");
     return this.request<T, E>({
       ...opts,
       retryOnFailure: false,
@@ -166,19 +156,14 @@ export class HttpClient {
 }
 
 function shouldRetry(opts: Options, metadata: ResponseMetadata): boolean {
-  log.debug(`opts.retryOnFailure ${opts.retryOnFailure}`);
   const { method, retryOnFailure = true } = opts;
-  log.debug(`used.retryOnFailure ${retryOnFailure}`);
 
-  const shouldRetryRequest: boolean = (
+  return (
     retryOnFailure &&
     method !== undefined &&
     IDEMPOTENT_METHODS.has(method) &&
     RETRY_STATUSES.has(metadata.status)
   );
-
-  log.debug(`shouldRetry ${shouldRetryRequest}`);
-  return shouldRetryRequest;
 }
 
 function createCircutOpenResponse<T, E>(opts: Options): Promise<Response<T, E>> {
