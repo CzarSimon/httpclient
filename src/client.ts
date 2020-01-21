@@ -119,7 +119,7 @@ export class HttpClient {
     error: Optional<HTTPError<E>>,
   ): Promise<Response<T, E>> {
     const { timeout = TIMEOUT_MS } = opts;
-    if (shouldRetry(opts)) {
+    if (!shouldRetry(opts)) {
       return createErrorResponse<T, E>(metadata, error);
     }
 
