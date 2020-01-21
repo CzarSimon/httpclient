@@ -11,7 +11,7 @@ export interface Options {
   retryOnFailure?: boolean;
 }
 
-export interface Request {
+export interface HTTPRequest {
   url: string;
   method: Method;
   body?: any;
@@ -25,9 +25,9 @@ export interface TypedMap<V> {
 
 export type Headers = TypedMap<string>;
 
-export interface Response<T, E> {
+export interface HTTPResponse<T> {
   body?: T;
-  error?: HTTPError<E>;
+  error?: Error;
   metadata: ResponseMetadata;
 }
 
@@ -37,9 +37,4 @@ export interface ResponseMetadata {
   requestId?: string;
   status: number;
   url: string;
-}
-
-export interface HTTPError<E> {
-  type: string;
-  body?: E;
 }

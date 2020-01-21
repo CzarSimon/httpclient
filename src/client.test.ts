@@ -1,7 +1,7 @@
 import { ConsoleHandler, level } from '@czarsimon/remotelogger';
 import uuid from 'uuid/v4';
 import { HttpClient, MockTransport } from '.';
-import { CIRCUT_OPEN, METHODS, REQUEST_ERROR, SERVICE_UNAVAILABLE, RETRY_DELAY_MS } from './constants';
+import { METHODS, RETRY_DELAY_MS, SERVICE_UNAVAILABLE } from './constants';
 import { Timer } from './util';
 
 interface Author {
@@ -13,11 +13,6 @@ interface Post {
   title: string;
   text: string;
   author: Author;
-}
-
-interface Err {
-  id: string;
-  message: string;
 }
 
 test('HttpClient should be able to make a get request', async () => {
@@ -54,7 +49,7 @@ test('HttpClient should be able to make a get request', async () => {
     transport,
   });
 
-  const res = await client.get<Post, Err>({ url: '/users/1' });
+  const res = await client.get<Post>({ url: '/users/1' });
 
   expect(res.body).toBeDefined();
   const { title, author } = res.body!;
@@ -69,10 +64,10 @@ test('HttpClient should be able to make a get request', async () => {
   expect(latency).toBeGreaterThanOrEqual(delay);
   expect(latency).toBeLessThan(delay * 2);
 
-  const resNotFound = await client.get<Post, Err>({ url: '/users/2' });
+  const resNotFound = await client.get<Post>({ url: '/users/2' });
   expect(resNotFound.body).toBeUndefined();
   expect(resNotFound.error).toBeDefined();
-  expect(resNotFound.error?.type).toBe(REQUEST_ERROR);
+  expect(resNotFound.error?.message).toBe('not found');
   expect(resNotFound.metadata.status).toBe(404);
 });
 
@@ -104,24 +99,20 @@ test('HttpClient circut breaker shold kick in on failed requests', async () => {
     transport,
   });
 
-  let threw = 0;
   for (let i = 0; i < 2; i++) {
-    try {
-      await client.get<Author, Err>({ url: '/authors/1', timeout: 50 });
-    } catch (error) {
-      threw++;
-      expect(error.type).toBe('aborted');
-    }
+    const { error, metadata } = await client.get<Author>({ url: '/authors/1', timeout: 50 });
+    expect(error).toBeDefined();
+    expect(error?.message).toBe('The user aborted a request.');
+    expect(metadata.status).toBe(SERVICE_UNAVAILABLE);
   }
-  expect(threw).toBe(2);
 
   const timer = new Timer();
-  const res = await client.get<Author, Err>({ url: '/authors/1', timeout: 2000 });
+  const res = await client.get<Author>({ url: '/authors/1', timeout: 2000 });
   const latency = timer.stop();
 
   expect(res.body).toBeUndefined();
   expect(res.error).toBeDefined();
-  expect(res.error?.type).toBe(CIRCUT_OPEN);
+  expect(res.error?.message.startsWith('CircutOpenError')).toBe(true);
   expect(latency).toBeLessThan(2000);
   expect(res.metadata.status).toBe(SERVICE_UNAVAILABLE);
 });
@@ -131,10 +122,7 @@ test('HttpClient retry should not be done on 400 errors', async () => {
   const transport = new MockTransport(
     {
       '/authors/1': {
-        error: {
-          body: "bad request",
-          type: REQUEST_ERROR,
-        },
+        error: new Error('bad request'),
         metadata: {
           method: METHODS.GET,
           requestId: uuid(),
@@ -148,7 +136,7 @@ test('HttpClient retry should not be done on 400 errors', async () => {
 
   const client = new HttpClient({ transport });
   const timer = new Timer();
-  const res = await client.get<Author, string>({ url: '/authors/1', timeout: 2000 });
+  const res = await client.get<Author>({ url: '/authors/1', timeout: 2000 });
   const latency = timer.stop();
 
   expect(res.body).toBeUndefined();
@@ -163,10 +151,7 @@ test('HttpClient retry should be done on 502 errors with idempotent methods', as
   const transport = new MockTransport(
     {
       '/authors/1': {
-        error: {
-          body: "bad gateway",
-          type: REQUEST_ERROR,
-        },
+        error: new Error('bad gateway'),
         metadata: {
           method: METHODS.GET,
           requestId: uuid(),
@@ -180,7 +165,7 @@ test('HttpClient retry should be done on 502 errors with idempotent methods', as
 
   const client = new HttpClient({ transport });
   const timer = new Timer();
-  const res = await client.get<Author, string>({ url: '/authors/1', timeout: 2000 });
+  const res = await client.get<Author>({ url: '/authors/1', timeout: 2000 });
   const latency = timer.stop();
 
   expect(res.body).toBeUndefined();
@@ -195,10 +180,7 @@ test('HttpClient retry should not be done on 502 errors with non idempotent meth
   const transport = new MockTransport(
     {
       '/authors/1': {
-        error: {
-          body: "bad gateway",
-          type: REQUEST_ERROR,
-        },
+        error: new Error('bad gateway'),
         metadata: {
           method: METHODS.POST,
           requestId: uuid(),
@@ -212,7 +194,7 @@ test('HttpClient retry should not be done on 502 errors with non idempotent meth
 
   const client = new HttpClient({ transport });
   const timer = new Timer();
-  const res = await client.post<Author, string>({ url: '/authors/1', timeout: 2000 });
+  const res = await client.post<Author>({ url: '/authors/1', timeout: 2000 });
   const latency = timer.stop();
 
   expect(res.body).toBeUndefined();

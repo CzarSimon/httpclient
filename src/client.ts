@@ -1,7 +1,6 @@
 import CircutBreaker, { Options as CircutBreakerOptions } from '@czarsimon/circutbreaker';
 import { Handlers, Logger } from '@czarsimon/remotelogger';
 import {
-  CIRCUT_OPEN,
   DEFAULT_METHOD,
   IDEMPOTENT_METHODS,
   METHODS,
@@ -12,7 +11,7 @@ import {
 } from './constants';
 import { Transport } from './transport/base';
 import { Fetch } from './transport/fetch';
-import { Headers, HTTPError, Optional, Options, Response, ResponseMetadata } from './types';
+import { Headers, HTTPResponse, Optional, Options, ResponseMetadata } from './types';
 import { sleep, Timer } from './util';
 
 interface ConfigOptions {
@@ -50,23 +49,23 @@ export class HttpClient {
     return this.baseHeaders;
   }
 
-  public async get<T, E>(opts: Options): Promise<Response<T, E>> {
+  public async get<T>(opts: Options): Promise<HTTPResponse<T>> {
     return this.request({ ...opts, method: METHODS.GET });
   }
 
-  public async put<T, E>(opts: Options): Promise<Response<T, E>> {
+  public async put<T>(opts: Options): Promise<HTTPResponse<T>> {
     return this.request({ ...opts, method: METHODS.PUT });
   }
 
-  public async post<T, E>(opts: Options): Promise<Response<T, E>> {
+  public async post<T>(opts: Options): Promise<HTTPResponse<T>> {
     return this.request({ ...opts, method: METHODS.POST });
   }
 
-  public async delete<T, E>(opts: Options): Promise<Response<T, E>> {
+  public async delete<T>(opts: Options): Promise<HTTPResponse<T>> {
     return this.request({ ...opts, method: METHODS.DELETE });
   }
 
-  public async request<T, E>(opts: Options): Promise<Response<T, E>> {
+  public async request<T>(opts: Options): Promise<HTTPResponse<T>> {
     const { url, method = METHODS.GET, body, timeout } = opts;
 
     if (this.circutBreaker.isOpen(url)) {
@@ -74,9 +73,9 @@ export class HttpClient {
     }
 
     const headers = this.createHeaders(opts);
+    const timer = new Timer();
     try {
-      const timer = new Timer();
-      const res = await this.transport.request<T, E>({
+      const res = await this.transport.request<T>({
         body,
         headers,
         method,
@@ -87,44 +86,51 @@ export class HttpClient {
 
       const { status } = res.metadata;
       if (status >= 400 || res.error) {
-        return this.handleRequestFailure<T, E>({ ...opts, headers }, res.metadata, res.error);
+        return this.handleRequestFailure<T>({ ...opts, headers }, res.metadata, res.error);
       }
 
       this.recordRequest(res.metadata);
       return res;
     } catch (error) {
-      this.log.error(`${method} ${url} failed. error=[${JSON.stringify(error)}]`);
+      this.log.error(`${method} ${url} failed. error=[${error}]`);
       this.circutBreaker.record(url, SERVICE_UNAVAILABLE);
-      throw error;
+      return {
+        error,
+        metadata: {
+          latency: timer.stop(),
+          method,
+          status: SERVICE_UNAVAILABLE,
+          url,
+        },
+      };
     }
   }
 
-  private handleRequestFailure<T, E>(
+  private handleRequestFailure<T>(
     opts: Options,
     metadata: ResponseMetadata,
-    error: Optional<HTTPError<E>>,
-  ): Promise<Response<T, E>> {
+    error: Optional<Error>,
+  ): Promise<HTTPResponse<T>> {
     const { method, url } = opts;
     const { requestId, status } = metadata;
     this.circutBreaker.record(url, status);
 
-    const errorMsg = error ? `error=[${error.type}: ${error.body}], ` : '';
-    this.log.error(`${method} ${url} - status=[${status}], ${errorMsg}requestId=[${requestId}]`);
-    return this.retryRequest<T, E>(opts, metadata, error);
+    this.log.error(`${method} ${url} - status=[${status}], error=[${error}] requestId=[${requestId}]`);
+    return this.retryRequest<T>(opts, metadata, error);
   }
 
-  private async retryRequest<T, E>(
+  private async retryRequest<T>(
     opts: Options,
     metadata: ResponseMetadata,
-    error: Optional<HTTPError<E>>,
-  ): Promise<Response<T, E>> {
+    error: Optional<Error>,
+  ): Promise<HTTPResponse<T>> {
     const { timeout = TIMEOUT_MS } = opts;
     if (!shouldRetry(opts, metadata)) {
-      return createErrorResponse<T, E>(metadata, error);
+      return createErrorResponse<T>(metadata, error);
     }
 
     await sleep(RETRY_DELAY_MS);
-    return this.request<T, E>({
+    return this.request<T>({
       ...opts,
       retryOnFailure: false,
       timeout: timeout + RETRY_DELAY_MS,
@@ -159,20 +165,15 @@ function shouldRetry(opts: Options, metadata: ResponseMetadata): boolean {
   const { method, retryOnFailure = true } = opts;
 
   return (
-    retryOnFailure &&
-    method !== undefined &&
-    IDEMPOTENT_METHODS.has(method) &&
-    RETRY_STATUSES.has(metadata.status)
+    retryOnFailure && method !== undefined && IDEMPOTENT_METHODS.has(method) && RETRY_STATUSES.has(metadata.status)
   );
 }
 
-function createCircutOpenResponse<T, E>(opts: Options): Promise<Response<T, E>> {
+function createCircutOpenResponse<T>(opts: Options): Promise<HTTPResponse<T>> {
   const { method = DEFAULT_METHOD, url } = opts;
 
   return Promise.resolve({
-    error: {
-      type: CIRCUT_OPEN,
-    },
+    error: new Error(`CircutOpenError url=[${url}]`),
     metadata: {
       method,
       status: SERVICE_UNAVAILABLE,
@@ -181,7 +182,7 @@ function createCircutOpenResponse<T, E>(opts: Options): Promise<Response<T, E>> 
   });
 }
 
-function createErrorResponse<T, E>(metadata: ResponseMetadata, error: Optional<HTTPError<E>>): Promise<Response<T, E>> {
+function createErrorResponse<T>(metadata: ResponseMetadata, error: Optional<Error>): Promise<HTTPResponse<T>> {
   return Promise.resolve({
     error,
     metadata,

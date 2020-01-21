@@ -1,11 +1,11 @@
 import fetch from 'cross-fetch';
 import uuid from 'uuid/v4';
-import { CONTENT_TYPE_HEADER, CONTENT_TYPES, REQUEST_ERROR, REQUEST_ID_HEADER } from '../constants';
-import { Headers, Optional, Request, Response as HTTPResponse, ResponseMetadata } from '../types';
+import { CONTENT_TYPE_HEADER, CONTENT_TYPES, REQUEST_ID_HEADER } from '../constants';
+import { Headers, HTTPRequest, HTTPResponse, ResponseMetadata } from '../types';
 import { Transport } from './base';
 
 export class Fetch extends Transport {
-  public async request<T, E>(req: Request): Promise<HTTPResponse<T, E>> {
+  public async request<T>(req: HTTPRequest): Promise<HTTPResponse<T>> {
     const { body, method, timeout, url } = req;
     const headers = createHeaders(req);
 
@@ -30,42 +30,39 @@ export class Fetch extends Transport {
       url,
     };
 
-    if (res.ok) {
+    if (!res.ok) {
+      const errorMsg = await res.text();
+      return {
+        error: new Error(errorMsg),
+        metadata,
+      };
+    }
+
+    try {
       return {
         body: await parseBody<T>(res),
         metadata,
       };
-    } else {
+    } catch (error) {
       return {
-        error: {
-          body: await parseBody<E>(res),
-          type: REQUEST_ERROR,
-        },
+        error,
         metadata,
       };
     }
   }
 }
 
-async function parseBody<T>(res: Response): Promise<Optional<T>> {
+async function parseBody<T>(res: Response): Promise<T> {
   const contentType = res.headers.get(CONTENT_TYPE_HEADER);
-  if (!contentType) {
-    return;
-  }
-
-  if (contentType.startsWith(CONTENT_TYPES.JSON)) {
+  if (!contentType || contentType.startsWith(CONTENT_TYPES.JSON)) {
     return res.json();
   }
 
-  if (contentType.startsWith(CONTENT_TYPES.TEXT) || contentType.startsWith(CONTENT_TYPES.HTML)) {
-    const body: any = await res.text();
-    return body;
-  }
-
-  return res.json();
+  const body = await res.text();
+  throw new Error(`Unsupported content-type: [${contentType}], body: [${body}]`);
 }
 
-function createHeaders(req: Request): Headers {
+function createHeaders(req: HTTPRequest): Headers {
   const headers: Headers = req.headers || {};
   if (req.body && !headers[CONTENT_TYPE_HEADER]) {
     headers[CONTENT_TYPE_HEADER] = CONTENT_TYPES.JSON;

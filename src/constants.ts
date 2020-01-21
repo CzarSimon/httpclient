@@ -10,9 +10,6 @@ export const CONTENT_TYPES: TypedMap<string> = {
   TEXT: 'text/plain',
 };
 
-export const REQUEST_ERROR = 'REQUEST_ERROR';
-export const CIRCUT_OPEN = 'CIRCUT_OPEN';
-
 export const TIMEOUT_MS: number = 5000;
 export const RETRY_DELAY_MS: number = 500;
 

@@ -20,7 +20,7 @@ test('Fetch should be instance of Transport', () => {
 
 test('Fetch should be able to make a get request', async () => {
   const transport = new Fetch();
-  const res = await transport.request<HTTPBinResponse, string>({
+  const res = await transport.request<HTTPBinResponse>({
     headers: {},
     method: METHODS.GET,
     timeout: 2000,
@@ -34,7 +34,7 @@ test('Fetch should be able to make a get request', async () => {
 
 test('Fetch should return error response on bad method', async () => {
   const transport = new Fetch();
-  const res = await transport.request<HTTPBinResponse, string>({
+  const res = await transport.request<HTTPBinResponse>({
     headers: {},
     method: METHODS.DELETE,
     timeout: 2000,
@@ -43,14 +43,13 @@ test('Fetch should return error response on bad method', async () => {
 
   expect(res.metadata.status).toBe(405);
   expect(res.error).toBeDefined();
-  expect(typeof res.error!.body).toBe('string');
   expect(res.body).toBeUndefined();
 });
 
 test('Fetch should throw an error on timoout', async () => {
   const transport = new Fetch();
   try {
-    await transport.request<HTTPBinResponse, string>({
+    await transport.request<HTTPBinResponse>({
       body: {
         key: 'value',
       },

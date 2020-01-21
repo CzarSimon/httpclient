@@ -1,9 +1,8 @@
-import { REQUEST_ERROR } from '../constants';
-import { Optional, Request, Response as HTTPResponse, TypedMap } from '../types';
+import { HTTPRequest, HTTPResponse, Optional, TypedMap } from '../types';
 import { sleep } from '../util';
 import { Transport } from './base';
 
-type Responses = TypedMap<HTTPResponse<any, any>>;
+type Responses = TypedMap<HTTPResponse<any>>;
 
 export class MockTransport extends Transport {
   private responses: Responses;
@@ -15,7 +14,7 @@ export class MockTransport extends Transport {
     this.delay = delay;
   }
 
-  public async request<T, E>(req: Request): Promise<HTTPResponse<T, E>> {
+  public async request<T>(req: HTTPRequest): Promise<HTTPResponse<T>> {
     const { method, timeout, url } = req;
     if (this.delay && timeout && this.delay > timeout) {
       await sleep(timeout);
@@ -35,9 +34,7 @@ export class MockTransport extends Transport {
     }
 
     return {
-      error: {
-        type: REQUEST_ERROR,
-      },
+      error: new Error('not found'),
       metadata: {
         method,
         status: 404,
