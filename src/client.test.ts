@@ -1,5 +1,5 @@
 import { ConsoleHandler, level } from '@czarsimon/remotelogger';
-import uuid from 'uuid/v4';
+import { v4 as uuid } from 'uuid';
 import { HttpClient, MockTransport } from '.';
 import { METHODS, RETRY_DELAY_MS, SERVICE_UNAVAILABLE } from './constants';
 import { Timer } from './util';

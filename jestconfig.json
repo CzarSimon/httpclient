@@ -2,7 +2,7 @@
   "transform": {
     "^.+\\.tsx?$": "ts-jest"
   },
-  "testEnvironment": "jsDom",
+  "testEnvironment": "jsdom",
   "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$",
   "moduleFileExtensions": [
     "ts",

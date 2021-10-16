@@ -1,5 +1,5 @@
 import fetch from 'cross-fetch';
-import uuid from 'uuid/v4';
+import { v4 as uuid } from 'uuid';
 import { CONTENT_TYPE_HEADER, CONTENT_TYPES, REQUEST_ID_HEADER } from '../constants';
 import { Headers, HTTPRequest, HTTPResponse, ResponseMetadata } from '../types';
 import { wrapError } from '../util';
