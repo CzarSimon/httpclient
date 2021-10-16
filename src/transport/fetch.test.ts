@@ -1,6 +1,7 @@
 import { Fetch, Transport } from '.';
 import { METHODS } from '../constants';
 import { Headers, TypedMap } from '../types';
+import { wrapError } from '../util';
 
 interface HTTPBinResponse {
   args: TypedMap<string>;
@@ -46,7 +47,7 @@ test('Fetch should return error response on bad method', async () => {
   expect(res.body).toBeUndefined();
 });
 
-test('Fetch should throw an error on timoout', async () => {
+test('Fetch should throw an error on timeout', async () => {
   const transport = new Fetch();
   try {
     await transport.request<HTTPBinResponse>({
@@ -60,6 +61,7 @@ test('Fetch should throw an error on timoout', async () => {
     });
     fail('Timout should have thrown an error');
   } catch (error) {
-    expect(error.type).toBe('aborted');
+    const typedError = wrapError(error);
+    expect(typedError.message).toBe('The user aborted a request.');
   }
 });
