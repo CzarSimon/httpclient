@@ -8,6 +8,7 @@
     "test": "jest --config jestconfig.json",
     "lint": "tslint -p tsconfig.json",
     "format": "prettier --write \"src/**/*.ts\" \"src/**/*.js\"",
+    "check-format": "prettier --check \"src/**/*.ts\" \"src/**/*.js\"",
     "build": "tsc",
     "prepare": "npm run build",
     "prepublishOnly": "npm test && npm run lint",
