@@ -12,7 +12,7 @@ import {
 import { Transport } from './transport/base';
 import { Fetch } from './transport/fetch';
 import { Headers, HTTPResponse, Optional, Options, ResponseMetadata } from './types';
-import { sleep, Timer } from './util';
+import { sleep, Timer, wrapError } from './util';
 
 interface ConfigOptions {
   baseHeaders?: Headers;
@@ -92,10 +92,11 @@ export class HttpClient {
       this.recordRequest(res.metadata);
       return res;
     } catch (error) {
+      const typedError = wrapError(error);
       this.log.error(`${method} ${url} failed. error=[${error}]`);
       this.circutBreaker.record(url, SERVICE_UNAVAILABLE);
       return {
-        error,
+        error: typedError,
         metadata: {
           latency: timer.stop(),
           method,

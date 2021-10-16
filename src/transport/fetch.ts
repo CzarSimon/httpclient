@@ -1,7 +1,8 @@
 import fetch from 'cross-fetch';
-import uuid from 'uuid/v4';
+import { v4 as uuid } from 'uuid';
 import { CONTENT_TYPE_HEADER, CONTENT_TYPES, REQUEST_ID_HEADER } from '../constants';
 import { Headers, HTTPRequest, HTTPResponse, ResponseMetadata } from '../types';
+import { wrapError } from '../util';
 import { Transport } from './base';
 
 export class Fetch extends Transport {
@@ -44,8 +45,9 @@ export class Fetch extends Transport {
         metadata,
       };
     } catch (error) {
+      const typedError = wrapError(error);
       return {
-        error,
+        error: typedError,
         metadata,
       };
     }

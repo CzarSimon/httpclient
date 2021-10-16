@@ -17,3 +17,13 @@ export class Timer {
     return new Date().getTime();
   }
 }
+
+export function wrapError(err: any): Error {
+  if (err instanceof Error) {
+    return err;
+  } else if ('message' in err) {
+    return new Error(err.message);
+  }
+
+  return new Error(String(err));
+}
