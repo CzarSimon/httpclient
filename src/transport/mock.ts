@@ -36,6 +36,7 @@ export class MockTransport extends Transport {
     return {
       error: new Error('not found'),
       metadata: {
+        headers: {},
         method,
         status: 404,
         url,

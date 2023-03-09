@@ -29,6 +29,7 @@ test('HttpClient should be able to make a get request', async () => {
           title: 'h1',
         },
         metadata: {
+          headers: {},
           method: METHODS.GET,
           requestId: uuid(),
           status: 200,
@@ -81,6 +82,7 @@ test('HttpClient circut breaker shold kick in on failed requests', async () => {
           name: 'Some name',
         },
         metadata: {
+          headers: {},
           method: METHODS.GET,
           requestId: uuid(),
           status: 200,
@@ -124,6 +126,7 @@ test('HttpClient retry should not be done on 400 errors', async () => {
       '/authors/1': {
         error: new Error('bad request'),
         metadata: {
+          headers: {},
           method: METHODS.GET,
           requestId: uuid(),
           status: 400,
@@ -153,6 +156,7 @@ test('HttpClient retry should be done on 502 errors with idempotent methods', as
       '/authors/1': {
         error: new Error('bad gateway'),
         metadata: {
+          headers: {},
           method: METHODS.GET,
           requestId: uuid(),
           status: 502,
@@ -182,6 +186,7 @@ test('HttpClient retry should not be done on 502 errors with non idempotent meth
       '/authors/1': {
         error: new Error('bad gateway'),
         metadata: {
+          headers: {},
           method: METHODS.POST,
           requestId: uuid(),
           status: 502,

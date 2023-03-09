@@ -24,7 +24,13 @@ export class Fetch extends Transport {
       signal: controller.signal,
     });
 
+    const responseHeaders: Headers = {};
+    res.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+
     const metadata: ResponseMetadata = {
+      headers: responseHeaders,
       method,
       requestId: headers[REQUEST_ID_HEADER],
       status: res.status,

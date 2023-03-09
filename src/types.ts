@@ -35,6 +35,7 @@ export interface ResponseMetadata {
   latency?: number;
   method: Method;
   requestId?: string;
+  headers: Headers;
   status: number;
   url: string;
 }

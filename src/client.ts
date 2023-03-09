@@ -98,6 +98,7 @@ export class HttpClient {
       return {
         error: typedError,
         metadata: {
+          headers: {},
           latency: timer.stop(),
           method,
           status: SERVICE_UNAVAILABLE,
@@ -176,6 +177,7 @@ function createCircutOpenResponse<T>(opts: Options): Promise<HTTPResponse<T>> {
   return Promise.resolve({
     error: new Error(`CircutOpenError url=[${url}]`),
     metadata: {
+      headers: {},
       method,
       status: SERVICE_UNAVAILABLE,
       url,
