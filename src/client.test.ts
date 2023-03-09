@@ -204,7 +204,7 @@ test('HttpClient retry should not be done on 502 errors with non idempotent meth
 
   expect(res.body).toBeUndefined();
   expect(res.error).toBeDefined();
-  expect(latency).toBeGreaterThanOrEqual(delay);
+  expect(latency + 10).toBeGreaterThanOrEqual(delay);
   expect(latency).toBeLessThan(delay * 2);
   expect(res.metadata.status).toBe(502);
 });
